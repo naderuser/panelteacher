@@ -1767,7 +1767,12 @@ window.exportWord = exportWord;
 window.resetAll = resetAll;
 window.renderPreview = renderPreview;
 window.setTodayDate = setTodayDate;
-window.saveToKV = saveToKV;`;
+window.saveToKV = saveToKV;
+window.examBuilderAddQuestion = examBuilderAddQuestion;
+window.examBuilderSave = examBuilderSave;
+window.examBuilderLoad = examBuilderLoad;
+window.examBuilderPrint = examBuilderPrint;
+window.examBuilderReset = examBuilderReset;`;
 }
 
 /* ------------------------- صفحه اصلی ------------------------- */
@@ -2500,6 +2505,64 @@ function teacherPage() {
           <button class="btn" id="btn-save-q">💾 ذخیره سربرگ و سوالات</button>
           <a class="btn sec" id="btn-word-exam" href="/api/teacher/word?type=questions">📄 دانلود برگه آزمون (Word)</a>
         </div>
+      </div>
+
+      <div class="card tab-content hidden" id="tab-exam-builder">
+        <h3>📋 پنل آزمون‌ساز</h3>
+        <div class="row">
+          <div><label>🎓 سطح تحصیلی</label>
+            <select id="educationLevel">
+              <option value="elementary">ابتدایی</option>
+              <option value="middle">متوسطه اول</option>
+              <option value="high">متوسطه دوم</option>
+            </select>
+          </div>
+          <div><label>🏢 اداره آموزش و پرورش</label><input id="eduOffice" placeholder="نام اداره"></div>
+        </div>
+        <div class="row">
+          <div><label>📚 پایه/کلاس</label><input id="grade" placeholder="مثال: ششم"></div>
+          <div><label>📖 نام درس</label><input id="subject" placeholder="مثال: ریاضی"></input></div>
+        </div>
+        <div class="row">
+          <div><label>👤 نام دانش‌آموز</label><input id="studentName" placeholder="نام کامل"></div>
+          <div><label>👨 نام پدر</label><input id="fatherName" placeholder="نام پدر"></div>
+        </div>
+        <div class="row">
+          <div><label>🏫 نام مدرسه</label><input id="schoolName" placeholder="نام مدرسه"></div>
+          <div><label>👨‍🏫 نام معلم</label><input id="teacherName" placeholder="نام معلم"></div>
+        </div>
+        <div class="row">
+          <div><label>📅 تاریخ آزمون</label><input id="examDate" type="text" placeholder="مثال: 1405/01/01"></div>
+          <div><label>⏱️ مدت زمان (دقیقه)</label><input id="duration" type="number" value="60" min="1"></div>
+        </div>
+        
+        <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+        <h4>➕ اضافه کردن سوال</h4>
+        <div class="question-form">
+          <textarea id="questionText" placeholder="متن سوال را بنویسید..."></textarea>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+            <label>نمره:</label>
+            <input id="questionScore" type="number" value="1" min="0.5" step="0.5" style="width:60px">
+            <input id="questionFeedback" placeholder="بازخورد (اختیاری)" style="flex:1">
+            <button class="btn" onclick="examBuilderAddQuestion()">➕ اضافه</button>
+          </div>
+        </div>
+        
+        <div id="questionsContainer" class="questions-list"></div>
+        <div id="questionCount" class="question-count"></div>
+        
+        <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+        <h4>💬 بازخورد کلی</h4>
+        <textarea id="generalFeedback" placeholder="بازخورد کلی معلم..."></textarea>
+        
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+          <button class="btn" onclick="examBuilderSave()">💾 ذخیره در KV</button>
+          <button class="btn" onclick="examBuilderLoad()">📂 بازیابی از KV</button>
+          <button class="btn" onclick="examBuilderPrint()">🖨️ پرینت</button>
+          <button class="btn" onclick="examBuilderReset()">🔄 پاک کردن</button>
+        </div>
+        
+        <div id="examPreview" class="exam-preview"></div>
       </div>
 
       <div class="card tab-content hidden" id="tab-answers">
