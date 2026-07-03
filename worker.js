@@ -430,6 +430,21 @@ async function handleApi(req, env, url, path) {
       return json({ ok: true });
     }
 
+    // آزمون‌ساز - ذخیره و بازیابی
+    if (path === "/api/teacher/exam-builder/save" && method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      await env.EXAM_KV.put("exam_builder_data", JSON.stringify(body));
+      return json({ success: true, message: "ذخیره شد" });
+    }
+
+    if (path === "/api/teacher/exam-builder/load" && method === "GET") {
+      const data = await env.EXAM_KV.get("exam_builder_data");
+      if (data) {
+        return json({ success: true, data: JSON.parse(data) });
+      }
+      return json({ success: false, message: "اطلاعاتی یافت نشد" });
+    }
+
     if (path === "/api/teacher/submissions" && method === "GET") {
       const students = await listStudents(env);
       const out = [];
@@ -2160,6 +2175,243 @@ async function studentPage(env, id) {
 
 /* ------------------------- پنل معلم (کامل) ------------------------- */
 
+// ===== آزمون‌ساز - Exam Builder Functions =====
+let questions = [];
+let nextId = 1;
+
+function examBuilderAddQuestion() {
+    const text = document.getElementById('questionText').value.trim();
+    if (!text) {
+        alert('لطفاً متن سوال را وارد کنید!');
+        return;
+    }
+    questions.push({
+        id: nextId++,
+        text: text,
+        score: parseFloat(document.getElementById('questionScore').value) || 1,
+        feedback: document.getElementById('questionFeedback').value.trim()
+    });
+    document.getElementById('questionText').value = '';
+    document.getElementById('questionFeedback').value = '';
+    document.getElementById('questionScore').value = 1;
+    renderExamBuilderList();
+    renderExamBuilderPreview();
+}
+
+function examBuilderRemoveQuestion(id) {
+    if (confirm('آیا از حذف این سوال مطمئن هستید؟')) {
+        questions = questions.filter(q => q.id !== id);
+        renderExamBuilderList();
+        renderExamBuilderPreview();
+    }
+}
+
+function examBuilderMoveQuestion(id, direction) {
+    const index = questions.findIndex(q => q.id === id);
+    if (index === -1) return;
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= questions.length) return;
+    [questions[index], questions[newIndex]] = [questions[newIndex], questions[index]];
+    renderExamBuilderList();
+    renderExamBuilderPreview();
+}
+
+function renderExamBuilderList() {
+    const container = document.getElementById('questionsContainer');
+    if (!container) return;
+    if (questions.length === 0) {
+        container.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:1.5rem;">هنوز سوالی اضافه نشده</p>';
+        return;
+    }
+    container.innerHTML = questions.map((q, i) => \`
+        <div class="question-item" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                    <strong style="color:#2d6a9f">\${i + 1}.</strong>
+                    <span style="margin-right:8px">\${q.text.substring(0, 60)}\${q.text.length > 60 ? '...' : ''}</span>
+                    <span style="background:#48bb78;color:white;padding:2px 8px;border-radius:12px;font-size:12px;margin-right:8px">\${q.score} نمره</span>
+                    \${q.feedback ? \`<span style="color:#48bb78;font-size:12px;margin-right:8px">💬 \${q.feedback}</span>\` : ''}
+                </div>
+                <div style="display:flex;gap:4px">
+                    <button onclick="examBuilderMoveQuestion(\${q.id}, -1)" style="background:#edf2f7;border:none;padding:4px 8px;border-radius:4px;cursor:pointer">↑</button>
+                    <button onclick="examBuilderMoveQuestion(\${q.id}, 1)" style="background:#edf2f7;border:none;padding:4px 8px;border-radius:4px;cursor:pointer">↓</button>
+                    <button onclick="examBuilderRemoveQuestion(\${q.id})" style="background:#fed7d7;border:none;padding:4px 8px;border-radius:4px;cursor:pointer;color:#c53030">✕</button>
+                </div>
+            </div>
+        </div>
+    \`).join('');
+    
+    const countEl = document.getElementById('questionCount');
+    if (countEl) {
+        const total = questions.reduce((sum, q) => sum + q.score, 0);
+        countEl.textContent = \`تعداد سوالات: \${questions.length} | مجموع نمرات: \${total}\`;
+    }
+}
+
+function renderExamBuilderPreview() {
+    const container = document.getElementById('examPreview');
+    if (!container) return;
+    const meta = {
+        educationLevel: document.getElementById('educationLevel')?.value || 'elementary',
+        eduOffice: document.getElementById('eduOffice')?.value || '',
+        grade: document.getElementById('grade')?.value || '',
+        subject: document.getElementById('subject')?.value || '',
+        studentName: document.getElementById('studentName')?.value || '',
+        fatherName: document.getElementById('fatherName')?.value || '',
+        schoolName: document.getElementById('schoolName')?.value || '',
+        teacherName: document.getElementById('teacherName')?.value || '',
+        examDate: document.getElementById('examDate')?.value || '',
+        duration: document.getElementById('duration')?.value || ''
+    };
+    const totalScore = questions.reduce((sum, q) => sum + q.score, 0);
+    let html = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-top:20px">';
+    html += '<div style="text-align:center;font-size:14px;margin-bottom:16px">بسم الله الرحمن الرحيم</div>';
+    html += \`<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+        <tr>
+            <td style="padding:8px;border:1px solid #000;width:33%"><strong>آموزش و پرورش</strong> \${meta.eduOffice}</td>
+            <td style="padding:8px;border:1px solid #000;width:34%"><strong>درس:</strong> \${meta.subject}</td>
+            <td style="padding:8px;border:1px solid #000;width:33%"><strong>پایه:</strong> \${meta.grade}</td>
+        </tr>
+        <tr>
+            <td style="padding:8px;border:1px solid #000"><strong>نام:</strong> \${meta.studentName}</td>
+            <td style="padding:8px;border:1px solid #000"><strong>نام پدر:</strong> \${meta.fatherName}</td>
+            <td style="padding:8px;border:1px solid #000"><strong>تاریخ:</strong> \${meta.examDate}</td>
+        </tr>
+        <tr>
+            <td style="padding:8px;border:1px solid #000"><strong>مدرسه:</strong> \${meta.schoolName}</td>
+            <td style="padding:8px;border:1px solid #000"><strong>معلم:</strong> \${meta.teacherName}</td>
+            <td style="padding:8px;border:1px solid #000"><strong>نمره:</strong> /\${totalScore}</td>
+        </tr>
+    </table>\`;
+    html += '<hr style="margin:16px 0">';
+    questions.forEach((q, i) => {
+        html += \`<div style="margin-bottom:20px;padding:12px;background:#f7fafc;border-radius:4px">
+            <div style="font-weight:bold;margin-bottom:8px">\${i + 1}. \${q.text} <span style="color:#48bb78">(\${q.score} نمره)</span></div>
+            <div style="min-height:60px;border:1px dashed #cbd5e0;margin-top:8px;padding:8px">پاسخ:</div>
+            \${q.feedback ? \`<div style="margin-top:8px;font-size:12px;color:#48bb78">💬 \${q.feedback}</div>\` : ''}
+        </div>\`;
+    });
+    const feedback = document.getElementById('generalFeedback')?.value;
+    if (feedback) {
+        html += \`<div style="margin-top:20px;padding:12px;background:#fffff0;border-radius:4px">
+            <strong>بازخورد معلم:</strong> \${feedback}
+        </div>\`;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function getExamBuilderAllData() {
+    return {
+        meta: {
+            educationLevel: document.getElementById('educationLevel')?.value || 'elementary',
+            eduOffice: document.getElementById('eduOffice')?.value || '',
+            grade: document.getElementById('grade')?.value || '',
+            subject: document.getElementById('subject')?.value || '',
+            studentName: document.getElementById('studentName')?.value || '',
+            fatherName: document.getElementById('fatherName')?.value || '',
+            schoolName: document.getElementById('schoolName')?.value || '',
+            teacherName: document.getElementById('teacherName')?.value || '',
+            examDate: document.getElementById('examDate')?.value || '',
+            duration: document.getElementById('duration')?.value || '',
+            generalFeedback: document.getElementById('generalFeedback')?.value || ''
+        },
+        questions: questions,
+        nextId: nextId
+    };
+}
+
+function loadExamBuilderData(data) {
+    if (!data) return;
+    const meta = data.meta || {};
+    if (document.getElementById('educationLevel')) document.getElementById('educationLevel').value = meta.educationLevel || 'elementary';
+    if (document.getElementById('eduOffice')) document.getElementById('eduOffice').value = meta.eduOffice || '';
+    if (document.getElementById('grade')) document.getElementById('grade').value = meta.grade || '';
+    if (document.getElementById('subject')) document.getElementById('subject').value = meta.subject || '';
+    if (document.getElementById('studentName')) document.getElementById('studentName').value = meta.studentName || '';
+    if (document.getElementById('fatherName')) document.getElementById('fatherName').value = meta.fatherName || '';
+    if (document.getElementById('schoolName')) document.getElementById('schoolName').value = meta.schoolName || '';
+    if (document.getElementById('teacherName')) document.getElementById('teacherName').value = meta.teacherName || '';
+    if (document.getElementById('examDate')) document.getElementById('examDate').value = meta.examDate || '';
+    if (document.getElementById('duration')) document.getElementById('duration').value = meta.duration || '60';
+    if (document.getElementById('generalFeedback')) document.getElementById('generalFeedback').value = meta.generalFeedback || '';
+    questions = data.questions || [];
+    nextId = data.nextId || questions.length + 1;
+    renderExamBuilderList();
+    renderExamBuilderPreview();
+}
+
+async function examBuilderSave() {
+    const data = getExamBuilderAllData();
+    try {
+        const response = await fetch('/api/teacher/exam-builder/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        alert(result.success ? '✅ ذخیره شد!' : '❌ خطا: ' + result.message);
+    } catch (error) {
+        alert('❌ خطا در ارتباط با سرور');
+    }
+}
+
+async function examBuilderLoad() {
+    try {
+        const response = await fetch('/api/teacher/exam-builder/load', { method: 'GET' });
+        const result = await response.json();
+        if (result.success && result.data) {
+            loadExamBuilderData(result.data);
+            alert('✅ بازیابی شد!');
+        } else {
+            alert('ℹ️ اطلاعاتی وجود ندارد');
+        }
+    } catch (error) {
+        alert('❌ خطا در ارتباط با سرور');
+    }
+}
+
+function examBuilderPrint() {
+    window.print();
+}
+
+function examBuilderReset() {
+    if (!confirm('آیا از پاک کردن همه اطلاعات مطمئن هستید؟')) return;
+    questions = [];
+    nextId = 1;
+    ['educationLevel', 'eduOffice', 'grade', 'subject', 'studentName', 'fatherName', 'schoolName', 'teacherName', 'examDate', 'duration', 'generalFeedback'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    document.getElementById('duration').value = '60';
+    renderExamBuilderList();
+    renderExamBuilderPreview();
+}
+
+// Initialize preview on tab switch
+document.addEventListener('DOMContentLoaded', () => {
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.target.id === 'tab-exam-builder' && !mutation.target.classList.contains('hidden')) {
+                renderExamBuilderList();
+                renderExamBuilderPreview();
+            }
+        });
+    });
+    const tab = document.getElementById('tab-exam-builder');
+    if (tab) {
+        observer.observe(tab, { attributes: true, attributeFilter: ['class'] });
+    }
+    // Also add input listeners for live preview
+    ['educationLevel', 'eduOffice', 'grade', 'subject', 'studentName', 'fatherName', 'schoolName', 'teacherName', 'examDate', 'duration', 'generalFeedback'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', renderExamBuilderPreview);
+            el.addEventListener('change', renderExamBuilderPreview);
+        }
+    });
+});
+
 function teacherPage() {
   return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2183,6 +2435,7 @@ function teacherPage() {
       <div class="tabs">
         <div class="tab active" data-tab="students">👨‍🎓 دانش‌آموزان</div>
         <div class="tab" data-tab="questions">📝 طراحی سوالات</div>
+        <div class="tab" data-tab="exam-builder">📋 آزمون‌ساز</div>
         <div class="tab" data-tab="answers">✅ تصحیح و پاسخنامه‌ها</div>
         <div class="tab" data-tab="schedule">📅 برنامه هفتگی</div>
         <div class="tab" data-tab="tables">📊 جدول‌ساز</div>
