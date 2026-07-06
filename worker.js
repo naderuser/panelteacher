@@ -276,14 +276,22 @@ function getClassHTML() {
     .file-box { display: flex; align-items: center; gap: 10px; background: #f8fafc; padding: 10px; border-radius: 8px; margin-top: 8px; border: 1px solid #e2e8f0;}
     .file-icon { font-size: 30px; }
     .file-info { display: flex; flex-direction: column; }
-    .file-name { font-size: 13px; font-weight: bold; color: #1e293b; }
+    .file-name { font-size: 13px; font-weight: bold; color: #1e293b; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-size { font-size: 11px; color: #64748b; }
     .download-btn { display: inline-block; padding: 5px 10px; background: #1e293b; color: white; text-decoration: none; border-radius: 5px; font-size: 11px; cursor: pointer; margin-top: 3px; }
+    .download-btn:hover { background: #334155; }
 
-    .input-area { display: flex; padding: 15px; background: white; align-items: center; gap: 10px; }
+    .input-area { display: flex; padding: 15px; background: white; align-items: center; gap: 10px; position: relative; }
     .input-area input[type="text"] { flex: 1; padding: 12px; border: 1px solid #cbd5e1; border-radius: 20px; outline: none; }
     .input-area button { background: #1e293b; color: white; border: none; padding: 0 20px; border-radius: 20px; cursor: pointer; height: 44px; }
     .upload-btn { background: #0ea5e9 !important; font-size: 20px; width: 44px; padding: 0 !important; display: flex; justify-content: center; align-items: center; position: relative; }
     .upload-spinner { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #0ea5e9; align-items: center; justify-content: center; font-size: 14px; color: white; border-radius: 20px; }
+    .drag-overlay { display: none; position: absolute; top: -5px; left: -5px; right: -5px; bottom: -5px; background: rgba(14,165,233,0.95); color: white; font-size: 18px; font-weight: bold; align-items: center; justify-content: center; border-radius: 25px; z-index: 10; }
+    .input-area.drag-over .drag-overlay { display: flex; }
+    .upload-progress { display: none; width: 100%; height: 4px; background: #e2e8f0; border-radius: 2px; margin-top: 6px; overflow: hidden; }
+    .upload-progress.active { display: block; }
+    .upload-progress-bar { height: 100%; background: #10b981; width: 0%; transition: width 0.3s; }
+    .camera-btn { background: #10b981 !important; }
 
     .whiteboard-container { width: 400px; background: white; display: flex; flex-direction: column; }
     .whiteboard-header { padding: 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: center; font-weight: bold; }
@@ -320,14 +328,22 @@ function getClassHTML() {
 
     <div class="chat-container">
       <div class="chat-box" id="chatBox"></div>
-      <div class="input-area">
+      <div class="input-area" id="inputArea">
+        <div class="drag-overlay">📂 رها کنید!</div>
         <input type="text" id="msgInput" placeholder="پیام خود را بنویسید..." onkeypress="if(event.key==='Enter') sendMessage()">
-        <input type="file" id="fileInput" style="display:none" accept="image/*,.pdf,.doc,.docx,.zip,.rar" onchange="handleFileUpload()">
+        <input type="file" id="fileInput" style="display:none" accept="image/*,.pdf,.doc,.docx,.zip,.rar,.txt,.xlsx,.pptx" onchange="handleFileUpload()">
+        <input type="file" id="cameraInput" style="display:none" accept="image/*" capture="environment">
         <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
           📎
           <div id="uploadSpinner" class="upload-spinner">⏳</div>
         </button>
+        <button class="camera-btn" onclick="document.getElementById('cameraInput').click()" title="عکس از دوربین">
+          📷
+        </button>
         <button onclick="sendMessage()">ارسال</button>
+      </div>
+      <div class="upload-progress" id="uploadProgress">
+        <div class="upload-progress-bar" id="uploadProgressBar"></div>
       </div>
     </div>
 
@@ -404,60 +420,104 @@ function getClassHTML() {
     }
 
     // سیستم ترکیبی آپلود عکس و فایل
-    async function handleFileUpload() {
-      const fileInput = document.getElementById('fileInput');
+    async function handleFileUpload(fileInput) {
+      if (!fileInput) fileInput = document.getElementById('fileInput');
       if (!fileInput.files || fileInput.files.length === 0) return;
       const file = fileInput.files[0];
       const spinner = document.getElementById('uploadSpinner');
+      const progress = document.getElementById('uploadProgress');
+      const progressBar = document.getElementById('uploadProgressBar');
       spinner.style.display = 'flex';
+      progress.classList.add('active');
+      progressBar.style.width = '10%';
+
+      const formatSize = (bytes) => {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      };
 
       try {
-        // روش اول: اگر فایل عکس بود، فشرده کن و مستقیم بفرست (بدون ارور حجم)
+        // روش اول: اگر فایل عکس بود، فشرده کن و مستقیم بفرست
         if (file.type.startsWith('image/')) {
           const reader = new FileReader();
           reader.onload = async function(e) {
+            progressBar.style.width = '30%';
             const img = new Image();
             img.onload = async function() {
+              progressBar.style.width = '50%';
               const canvas = document.createElement('canvas');
               let width = img.width, height = img.height;
-              const MAX_WIDTH = 800;
+              const MAX_WIDTH = 1200;
               if (width > MAX_WIDTH) { height = height * (MAX_WIDTH / width); width = MAX_WIDTH; }
               canvas.width = width; canvas.height = height;
               canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-              const base64String = canvas.toDataURL('image/jpeg', 0.7);
-              const chatContent = '📸 <strong>یک عکس ارسال کرد</strong><br><img src="' + base64String + '" onclick="window.open(this.src)">';
+              progressBar.style.width = '70%';
+              const base64String = canvas.toDataURL('image/jpeg', 0.8);
+              const chatContent = '📸 <strong>'+esc(username)+' عکس فرستاد</strong><br><img src="' + base64String + '" onclick="window.open(this.src)">';
               await fetch('/api/send-message', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classId, username, text: chatContent, isMedia: true}) });
-              spinner.style.display = 'none';
+              progressBar.style.width = '100%';
+              setTimeout(() => { progress.classList.remove('active'); spinner.style.display = 'none'; }, 300);
               fileInput.value = '';
             };
             img.src = e.target.result;
           };
           reader.readAsDataURL(file);
         }
-        // روش دوم: اگر فایل عکس نبود (PDF, Zip)، تو KV آپلود کن
+        // روش دوم: فایل‌های دیگر - آپلود به KV
         else {
-          if (file.size > 5 * 1024 * 1024) {
-            alert('حداکثر حجم مجاز فایل ۵ مگابایت است!');
+          if (file.size > 10 * 1024 * 1024) {
+            alert('حداکثر حجم مجاز فایل ۱۰ مگابایت است!');
+            progress.classList.remove('active');
             spinner.style.display = 'none';
             return;
           }
+          progressBar.style.width = '30%';
           const formData = new FormData();
           formData.append('file', file);
           formData.append('classId', classId);
           const res = await fetch('/api/upload-file', { method: 'POST', body: formData });
+          progressBar.style.width = '70%';
           const data = await res.json();
           if (data.success) {
             let icon = '📄';
             if (data.type.includes('pdf')) icon = '📕';
             if (data.type.includes('zip') || data.type.includes('rar')) icon = '🗜️';
-            const chatContent = '<div class="file-box"><div class="file-icon">'+icon+'</div><div class="file-info"><span class="file-name">'+data.name+'</span><a href="'+data.url+'" class="download-btn">⬇️ دانلود فایل</a></div></div>';
+            if (data.type.includes('word') || data.type.includes('document')) icon = '📝';
+            if (data.type.includes('sheet') || data.type.includes('excel')) icon = '📊';
+            if (data.type.includes('presentation') || data.type.includes('powerpoint')) icon = '📽️';
+            const chatContent = '<div class="file-box"><div class="file-icon">'+icon+'</div><div class="file-info"><span class="file-name">'+esc(data.name)+'</span><span class="file-size">'+formatSize(file.size)+'</span><a href="'+data.url+'" class="download-btn" target="_blank">⬇️ دانلود</a></div></div>';
             await fetch('/api/send-message', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({classId, username, text: chatContent, isMedia: true}) });
-          } else { alert('خطا در آپلود'); }
-          spinner.style.display = 'none';
+            progressBar.style.width = '100%';
+            setTimeout(() => { progress.classList.remove('active'); spinner.style.display = 'none'; }, 300);
+          } else { alert('خطا در آپلود'); progress.classList.remove('active'); spinner.style.display = 'none'; }
           fileInput.value = '';
         }
-      } catch(e) { alert('خطا در ارسال'); spinner.style.display = 'none'; fileInput.value = ''; }
+      } catch(e) { alert('خطا در ارسال'); progress.classList.remove('active'); spinner.style.display = 'none'; fileInput.value = ''; }
     }
+
+    // پشتیبانی از Drag & Drop
+    const inputArea = document.getElementById('inputArea');
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+      inputArea.addEventListener(evt, e => { e.preventDefault(); e.stopPropagation(); });
+    });
+    ['dragenter', 'dragover'].forEach(evt => { inputArea.addEventListener(evt, () => inputArea.classList.add('drag-over')); });
+    ['dragleave', 'drop'].forEach(evt => { inputArea.addEventListener(evt, () => inputArea.classList.remove('drag-over')); });
+    inputArea.addEventListener('drop', e => {
+      const dt = e.dataTransfer;
+      if (dt.files && dt.files.length > 0) {
+        const fileInput = document.getElementById('fileInput');
+        const dT = new DataTransfer();
+        dT.items.add(dt.files[0]);
+        fileInput.files = dT.files;
+        handleFileUpload(fileInput);
+      }
+    });
+
+    // دوربین هم از همین تابع استفاده کنه
+    document.getElementById('cameraInput').addEventListener('change', function() {
+      if (this.files && this.files.length > 0) handleFileUpload(this);
+    });
 
     async function fetchMessages() {
       const res = await fetch('/api/get-messages?classId=' + classId + '&afterId=' + lastMessageId);
