@@ -63,5 +63,97 @@ wrangler deploy
 |--------|-------|
 | `TEACHER_PASS` | رمز عبور معلم |
 
+## 🗄️ نصب KV (فضای ذخیره‌سازی)
+
+### ۱. ساخت KV namespace
+```bash
+wrangler kv:namespace create "CLASS_KV"
+```
+خروجی یک `id` خواهد بود مثل:
+```
+{n binding = "CLASS_KV", id = "abc123..."}
+```
+
+### ۲. اضافه کردن به wrangler.toml
+```toml
+kv_namespaces = [
+  { binding = "CLASS_KV", id = "abc123..." }
+]
+```
+
+### ۳. استقرار
+```bash
+wrangler deploy
+```
+
+---
+
+## 🗃️ نصب D1 (دیتابیس SQLite)
+
+### ۱. ساخت دیتابیس D1
+```bash
+wrangler d1 create class_db
+```
+خروجی یک `database_id` خواهد بود.
+
+### ۲. اضافه کردن به wrangler.toml
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "class_db"
+database_id = "xyz789..."
+```
+
+### ۳. ساخت جدول‌ها
+```sql
+-- ساخت فایل schema.sql
+CREATE TABLE classes (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at INTEGER
+);
+
+CREATE TABLE messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  class_id TEXT,
+  user TEXT,
+  role TEXT,
+  content TEXT,
+  time INTEGER
+);
+```
+
+### ۴. اجرای migrations
+```bash
+wrangler d1 migrations apply class_db --local
+wrangler d1 migrations apply class_db --remote
+```
+
+### ۵. استقرار
+```bash
+wrangler deploy
+```
+
+---
+
+## 🚀 استقرار کامل
+
+```bash
+# 1. کلون پروژه
+git clone https://github.com/naderuser/panelteacher.git
+cd panelteacher
+
+# 2. نصب KV
+wrangler kv:namespace create "CLASS_KV"
+# اضافه کردن binding به wrangler.toml
+
+# 3. نصب D1 (اختیاری)
+wrangler d1 create class_db
+# اضافه کردن binding به wrangler.toml
+
+# 4. استقرار
+wrangler deploy
+```
+
 ---
 ساخته شده با ❤️ برای آموزش
